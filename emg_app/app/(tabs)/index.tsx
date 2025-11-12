@@ -1,29 +1,69 @@
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { Button, Dimensions, StyleSheet, TextInput, View } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
 
-export default function HomeScreen() {
+export default function HomeScreen()  {
+  const [dataPoints, setDataPoint] = useState([20, 45, 28, 80, 99, 43, 50]);
+  const [newData, setNewData] = useState("");
+
+  const handleAddData = () => {
+    const numbers = newData
+    .split(',')
+    .map((n) => parseFloat(n))
+    .filter((n) => !isNaN(n));
+    if (numbers.length) setDataPoint(numbers);
+    setNewData('');
+  };
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">EMG Monitor</ThemedText>
-      </ThemedView>
-
       <ThemedText style={styles.subtitle}>
         EMG Muscle Sensor Output.
       </ThemedText>
 
-      <Image
-        source={require('@/assets/images/graph.png')}
-        style={styles.graph}
-        contentFit="contain"
+      <LineChart
+        data={{
+          labels: ['1', '2', '3', '4', '5', '6', '7','8','9','10'],
+          datasets: [{ data: dataPoints }],
+        }}
+        width={Dimensions.get('window').width - 40}
+        height={220}
+        yAxisSuffix="µV"
+        chartConfig={{
+          backgroundColor: '#1D3D47',
+          backgroundGradientFrom: '#1D3D47',
+          backgroundGradientTo: '#3F7182',
+          decimalPlaces: 1,
+          color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+          labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+          style: { borderRadius: 16 },
+          propsForDots: {
+            r: '4',
+            strokeWidth: '2',
+            stroke: '#00BFFF',
+          },
+        }}
+        bezier
+        style={styles.chart}
       />
+
+        <ThemedText style={styles.description}>
+        Enter new values separated by commas.
+      </ThemedText>
+
+      <View style={styles.inputContainer}>
+        <TextInput
+          value={newData}
+          onChangeText={setNewData}
+          placeholder="e.g. 30,50,60,70,90"
+          placeholderTextColor="#999"
+          style={styles.input}
+        />
+        <Button title="Graph It" onPress={handleAddData} />
+      </View>
 
       <ThemedText style={styles.description}>
         Current muscle group being tracked
@@ -42,6 +82,10 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+    scrollContainer: {
+    flexGrow: 1,
+    alignItems: 'center',
   },
   graphHeader: {
     height: 200,
@@ -76,5 +120,26 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     opacity: 0.8,
     lineHeight: 20,
+  },
+   chart: {
+    alignItems: 'center',
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+    inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginBottom: 25,
+  },
+    input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#555',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    color: '#fff',
+    height: 40,
   },
 });
