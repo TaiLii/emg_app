@@ -26,7 +26,7 @@ export default function HomeScreen()  {
 
       <LineChart
         data={{
-          labels: ['1', '2', '3', '4', '5', '6', '7','8','9','10'],
+          labels: dataPoints.map((_, i) => String(i + 1)),
           datasets: [{ data: dataPoints }],
         }}
         width={Dimensions.get('window').width - 40}
