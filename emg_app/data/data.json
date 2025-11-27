@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "id": "data1",
+      "userId": "demo1",
+      "values": [20, 45, 28, 80, 99, 43, 50],
+      "muscleGroup": "Biceps",
+      "timestamp": "2025-11-26T10:00:00.000Z"
+    },
+    {
+      "id": "data2",
+      "userId": "demo1",
+      "values": [15, 38, 42, 65, 72, 55, 48],
+      "muscleGroup": "Triceps",
+      "timestamp": "2025-11-26T11:00:00.000Z"
+    },
+    {
+      "id": "data3",
+      "userId": "demo1",
+      "values": [30, 50, 35, 70, 85, 40, 60],
+      "muscleGroup": "Forearm",
+      "timestamp": "2025-11-26T12:00:00.000Z"
+    }
+  ]
+}

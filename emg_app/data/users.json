@@ -1,0 +1,11 @@
+{
+  "users": [
+    {
+      "id": "demo1",
+      "username": "demouser",
+      "email": "demo@example.com",
+      "passwordHash": "demo12$331bb874",
+      "createdAt": "2025-11-26T00:00:00.000Z"
+    }
+  ]
+}
