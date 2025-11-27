@@ -21,12 +21,15 @@ void loop() {
   unsigned long now = micros();
 
   if (now - lastSampleTime >= periodUs) {
-    lastSampleTime += periodUs;   // keep it regular, not drift
+    //move forward by 1 sample period
+    lastSampleTime += periodUs;
 
-    int raw = analogRead(emgPin); // 0..1023
+    // get raw analog data
+    int raw = analogRead(emgPin); 
+    // convert raw adc value to actual measured voltage
     float voltage = raw * (5.0 / 1023.0);
 
-    // CSV-style output: time_us,raw,voltage
+    // print data to serial port
     Serial.print(now);
     Serial.print(',');
     Serial.print(raw);
