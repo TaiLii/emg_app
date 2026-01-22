@@ -1,10 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRootNavigationState, useRouter } from 'expo-router';
+import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
-import { AuthProvider, useAuth } from '@/context/auth-context';
+import { AuthProvider, useAuth } from '@/context/auth-context-enhanced';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -15,6 +15,7 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { isLoading, isSignedIn } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
   const navigationState = useRootNavigationState();
 
   useEffect(() => {
@@ -24,16 +25,27 @@ function RootLayoutNav() {
       return;
     }
 
-    console.log('Layout effect - isSignedIn:', isSignedIn);
+    // Check current route to avoid unnecessary redirects
+    const currentSegment = segments[0];
+    const inAuthGroup = currentSegment === 'login' || currentSegment === 'signup';
 
-    if (!isSignedIn) {
+    // Don't redirect if we don't know where we are yet
+    if (!currentSegment) {
+      return;
+    }
+
+    console.log('Layout effect - isSignedIn:', isSignedIn, 'segment:', currentSegment);
+
+    if (!isSignedIn && !inAuthGroup) {
+      // Only redirect to login if not already on auth screens
       console.log('Layout redirect: not signed in -> /login');
       router.replace('/login');
-    } else {
+    } else if (isSignedIn && inAuthGroup) {
+      // Only redirect to tabs if signed in and still on auth screens
       console.log('Layout redirect: signed in -> /(tabs)');
       router.replace('/(tabs)');
     }
-  }, [isLoading, isSignedIn, navigationState?.key]);
+  }, [isLoading, isSignedIn, segments, navigationState?.key]);
 
   if (isLoading) {
     return null;
