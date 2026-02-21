@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.emg-app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app connects to an EMG sensor over Bluetooth.",
+        "NSBluetoothPeripheralUsageDescription": "This app connects to an EMG sensor over Bluetooth.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +25,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.emg_app"
     },
     "web": {
       "output": "static",
@@ -43,6 +50,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bcd1a6a5-28c7-4747-a6b3-fc6e7d6210f7"
+      }
     }
   }
 }

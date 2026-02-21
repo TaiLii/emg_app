@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Button, Dimensions, StyleSheet, View, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import * as DocumentPicker from 'expo-document-picker';
 import Papa from 'papaparse';
 import { Picker } from '@react-native-picker/picker';
+import { connectAndStreamEmg } from "@/src/ble/emgBle";
 
 import { ThemedText } from '@/components/themed-text';
 import { useEmgData, type EMGRow } from '@/src/emg/EmgDataContext';
@@ -34,8 +35,15 @@ export default function HomeScreen() {
   const [selectedMuscle, setSelectedMuscle] = useState<string>('All');
   const [notice, setNoticeState] = useState<{ type: NoticeType; text: string } | null>({
     type: 'info',
-    text: 'Showing mock data. Upload a CSV to graph real readings.',
+    text: 'Showing mock data. Upload a CSV to graph real readings, or connect BLE for live streaming.',
   });
+
+  // BLE state
+  const [bleStatus, setBleStatus] = useState<string>('Disconnected');
+  const [isBleStreaming, setIsBleStreaming] = useState<boolean>(false);
+  const [blePoints, setBlePoints] = useState<number[]>([]);
+  const [latestBleValue, setLatestBleValue] = useState<number | null>(null);
+  const disconnectRef = useRef<null | (() => void)>(null);
 
   const muscles = useMemo(() => {
     const uniq = Array.from(new Set(data.map((d) => d.muscle))).filter(Boolean);
@@ -43,20 +51,74 @@ export default function HomeScreen() {
     return uniq;
   }, [data]);
 
-  // ✅ If CSV data exists, graph that; otherwise graph mock data
+  // ✅ Decide what data the graph should show
   const graphValues = useMemo(() => {
-    if (data.length === 0) return mockDataPoints;
-    const rows = selectedMuscle === 'All' ? data : data.filter((d) => d.muscle === selectedMuscle);
-    const vals = rows.map((r) => r.value).filter((v) => Number.isFinite(v));
-    return vals.length ? vals : mockDataPoints; // fallback if filter yields nothing
-  }, [data, selectedMuscle, mockDataPoints]);
+    // 1) BLE live stream takes priority if connected + we have points
+    if (isBleStreaming && blePoints.length > 0) return blePoints;
+
+    // 2) Else if CSV loaded, show filtered CSV
+    if (data.length > 0) {
+      const rows = selectedMuscle === 'All' ? data : data.filter((d) => d.muscle === selectedMuscle);
+      const vals = rows.map((r) => r.value).filter((v) => Number.isFinite(v));
+      return vals.length ? vals : mockDataPoints;
+    }
+
+    // 3) Else fallback to mock
+    return mockDataPoints;
+  }, [isBleStreaming, blePoints, data, selectedMuscle, mockDataPoints]);
+
+  const onConnectBle = async () => {
+    // BLE doesn’t work on web (and won’t work in Expo Go)
+    if (Platform.OS === 'web') {
+      setNotice(setNoticeState, 'error', 'Bluetooth LE is not supported on the web build.');
+      return;
+    }
+    if (disconnectRef.current) {
+      setNotice(setNoticeState, 'info', 'Already connected to BLE.');
+      return;
+    }
+
+    try {
+      setNotice(setNoticeState, 'info', 'Connecting to ESP32-EMG over BLE…');
+      setBleStatus('Connecting…');
+
+      const { disconnect } = await connectAndStreamEmg(
+        (v) => {
+          // ESP32 sends ASCII raw ADC counts: 0..4095
+          setLatestBleValue(v);
+
+          // Keep last 120 points on screen (adjust as you like)
+          setBlePoints((prev) => [...prev.slice(-119), v]);
+        },
+        (s) => {
+          setBleStatus(s);
+        }
+      );
+
+      disconnectRef.current = disconnect;
+      setIsBleStreaming(true);
+      setNotice(setNoticeState, 'success', 'BLE connected. Streaming live EMG values.');
+    } catch (e: any) {
+      disconnectRef.current = null;
+      setIsBleStreaming(false);
+      setBleStatus('Disconnected');
+      setNotice(setNoticeState, 'error', `BLE connect failed: ${e?.message ?? String(e)}`);
+    }
+  };
+
+  const onDisconnectBle = () => {
+    disconnectRef.current?.();
+    disconnectRef.current = null;
+    setIsBleStreaming(false);
+    setBleStatus('Disconnected');
+    setNotice(setNoticeState, 'info', 'BLE disconnected. Returning to CSV/mock data view.');
+  };
 
   const pickCSV = async () => {
     try {
       setNotice(setNoticeState, 'info', 'Opening file picker…');
 
       const result = await DocumentPicker.getDocumentAsync({
-        // On iOS, CSV may come through with different MIME types, so allow any and validate later
         type: '*/*',
         copyToCacheDirectory: true,
         multiple: false,
@@ -90,37 +152,31 @@ export default function HomeScreen() {
         skipEmptyLines: true,
         complete: async (res) => {
           try {
-            // Expect columns similar to: timestamp, muscle, value
+            // Your CSV headers: date, emg output (uv), muscle group
             const rows = (res.data as any[])
               .map((row): EMGRow | null => {
                 const timestamp = String(row['date'] ?? '').trim();
                 const muscle = String(row['muscle group'] ?? '').trim();
                 const value = parseNumber(row['emg output (uv)']);
-
                 if (!timestamp || !muscle || value === null) return null;
                 return { timestamp, muscle, value };
               })
               .filter(Boolean) as EMGRow[];
 
-
             if (rows.length === 0) {
               setNotice(
                 setNoticeState,
                 'error',
-                'Parsed 0 valid rows. Check your CSV headers/columns (expected timestamp, muscle, value).'
+                'Parsed 0 valid rows. Check your CSV headers: date, emg output (uv), muscle group.'
               );
               return;
             }
 
             await setDataAndPersist(rows);
             setSelectedMuscle('All');
+            setNotice(setNoticeState, 'success', `Loaded ${rows.length} rows from ${name}.`);
 
-            const m = Array.from(new Set(rows.map((r) => r.muscle))).filter(Boolean);
-            setNotice(
-              setNoticeState,
-              'success',
-              `Loaded ${rows.length} rows from ${name}. Muscles detected: ${m.length}.`
-            );
+            // If BLE isn’t streaming, graph will now show CSV automatically
           } catch (e: any) {
             setNotice(setNoticeState, 'error', `Failed after parsing: ${e?.message ?? String(e)}`);
           }
@@ -142,16 +198,23 @@ export default function HomeScreen() {
   const onClear = async () => {
     await clearData();
     setSelectedMuscle('All');
-    setNotice(setNoticeState, 'info', 'Cleared CSV data. Showing mock data again.');
+    setNotice(setNoticeState, 'info', 'Cleared CSV data. Showing mock/BLE data (if connected).');
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ThemedText style={styles.subtitle}>EMG Muscle Sensor Output</ThemedText>
 
+      {/* CSV controls */}
       <View style={styles.row}>
         <Button title="Upload CSV" onPress={pickCSV} />
         <Button title="Clear CSV" onPress={onClear} />
+      </View>
+
+      {/* BLE controls */}
+      <View style={[styles.row, { marginTop: 10 }]}>
+        <Button title="Connect BLE" onPress={onConnectBle} />
+        <Button title="Disconnect" onPress={onDisconnectBle} />
       </View>
 
       {/* Notice / error banner */}
@@ -164,11 +227,14 @@ export default function HomeScreen() {
           ]}
         >
           <ThemedText style={styles.noticeText}>{notice.text}</ThemedText>
+          <ThemedText style={[styles.noticeText, { opacity: 0.75, marginTop: 6 }]}>
+            {`BLE Status: ${bleStatus}${latestBleValue !== null ? ` | Latest: ${latestBleValue}` : ''}`}
+          </ThemedText>
         </View>
       )}
 
-      {/* Muscle dropdown only when we have real CSV data */}
-      {isLoaded && data.length > 0 && (
+      {/* Muscle dropdown only when we have real CSV data AND BLE is not currently streaming */}
+      {isLoaded && data.length > 0 && !isBleStreaming && (
         <View style={styles.pickerWrapper}>
           <Picker
             selectedValue={selectedMuscle}
@@ -184,15 +250,14 @@ export default function HomeScreen() {
         </View>
       )}
 
-
       <LineChart
         data={{
-          labels: graphValues.map((_, i) => String(i + 1)), // scales with point count
+          labels: graphValues.map((_, i) => String(i + 1)),
           datasets: [{ data: graphValues }],
         }}
         width={Dimensions.get('window').width - 40}
         height={220}
-        yAxisSuffix="µV"
+        yAxisSuffix={isBleStreaming ? '' : 'µV'}
         chartConfig={{
           backgroundColor: '#1D3D47',
           backgroundGradientFrom: '#1D3D47',
@@ -206,9 +271,11 @@ export default function HomeScreen() {
       />
 
       <ThemedText style={styles.footer}>
-        {data.length > 0
-          ? `Graphing ${selectedMuscle === 'All' ? 'all muscles' : selectedMuscle} (${data.length} total rows loaded).`
-          : 'Graphing mock data (no CSV loaded).'}
+        {isBleStreaming
+          ? `Graphing BLE live stream (${blePoints.length} points buffered).`
+          : data.length > 0
+            ? `Graphing ${selectedMuscle === 'All' ? 'all muscles' : selectedMuscle} (${data.length} total rows loaded).`
+            : 'Graphing mock data (no CSV loaded).'}
       </ThemedText>
     </SafeAreaView>
   );
